@@ -28,9 +28,15 @@ export default function HomePage() {
         <h1 className="text-4xl font-bold text-wood tracking-[0.3em] mb-2" style={{ fontFamily: 'serif' }}>
           明舟北渡
         </h1>
-        <p className="text-sm text-gray-500 tracking-wide">
+        <p className="text-sm text-gray-500 tracking-wide mb-5">
           运河上的幸存者，各怀心事
         </p>
+        <button
+          onClick={() => navigate('/lobby')}
+          className="px-6 py-2.5 bg-wood text-white rounded-full text-sm tracking-wider active:scale-95 transition-all shadow-sm hover:shadow-md"
+        >
+          🎭 进入游戏大厅
+        </button>
       </header>
 
       {/* 角色列表 */}
