@@ -47,6 +47,27 @@ export default function RoomPage() {
     }
   }, [roomId, userId])
 
+  // When phase changes to role_reveal and current player is not ready, show modal
+  useEffect(() => {
+    if (currentPhase === 'role_reveal' && roomId && userId) {
+      const me = players.find((p) => p.user_id === userId)
+      if (me && !me.is_ready && me.character_id && !showRoleModal) {
+        setRoleLoading(true)
+        setShowRoleModal(true)
+        getMyRole(roomId, userId)
+          .then((roleInfo) => {
+            setMyRole(roleInfo)
+          })
+          .catch(() => {
+            setMyRole(null)
+          })
+          .finally(() => {
+            setRoleLoading(false)
+          })
+      }
+    }
+  }, [currentPhase, players, roomId, userId])
+
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' })
   }, [messages])

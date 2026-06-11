@@ -111,6 +111,18 @@ export function useWebSocket(roomId: string | undefined) {
         }
         break
       }
+      case 'roles_assigned': {
+        if (payload.players) {
+          setPlayers(payload.players as Player[])
+        }
+        if (payload.phase) {
+          setPhase(payload.phase)
+        }
+        if (payload.system_message) {
+          addMessage(payload.system_message as RoomMessage)
+        }
+        break
+      }
       case 'clue_issued': {
         if (payload.clue) {
           const clue = payload.clue as Clue
