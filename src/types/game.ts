@@ -1,5 +1,6 @@
 export type GamePhase =
   | 'waiting'
+  | 'role_reveal'
   | 'opening'
   | 'search_1'
   | 'discuss_1'
@@ -46,6 +47,8 @@ export interface RoomMessage {
   id: string
   sender_id: string
   sender_nickname: string
+  sender_character_name?: string
+  sender_avatar_url?: string
   content: string
   message_type: 'text' | 'system' | 'phase_change' | 'clue_issued'
   created_at: string

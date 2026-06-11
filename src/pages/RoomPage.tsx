@@ -3,12 +3,13 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { useGameStore } from '../store/useGameStore'
 import { useRoomAPI } from '../hooks/useRoomAPI'
 import { useWebSocket } from '../hooks/useWebSocket'
-import AISidePanel from '../components/AISidePanel'
+import AIFloatingChat from '../components/AIFloatingChat'
+import RoleRevealModal from '../components/RoleRevealModal'
 
 export default function RoomPage() {
   const { roomId } = useParams<{ roomId: string }>()
   const navigate = useNavigate()
-  const { getRoom, getMessages, leaveRoom, listClues } = useRoomAPI()
+  const { getRoom, getMessages, leaveRoom, listClues, startGame, getMyRole, toggleReady } = useRoomAPI()
   const { sendMessage, disconnect } = useWebSocket(roomId)
 
   const {
@@ -33,6 +34,9 @@ export default function RoomPage() {
   const [input, setInput] = useState('')
   const [showClues, setShowClues] = useState(false)
   const [showAI, setShowAI] = useState(false)
+  const [showRoleModal, setShowRoleModal] = useState(false)
+  const [myRole, setMyRole] = useState<any>(null)
+  const [roleLoading, setRoleLoading] = useState(false)
   const scrollRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -59,10 +63,65 @@ export default function RoomPage() {
       ])
       setMessages(msgs)
       setClues(cls)
+
+      // If in role_reveal phase and current player not ready, show modal
+      if (room.current_phase === 'role_reveal') {
+        const me = room.players.find((p: any) => p.user_id === userId)
+        if (me && !me.is_ready) {
+          setRoleLoading(true)
+          setShowRoleModal(true)
+          try {
+            const roleInfo = await getMyRole(roomId!, userId)
+            setMyRole(roleInfo)
+          } catch {
+            setMyRole(null)
+          } finally {
+            setRoleLoading(false)
+          }
+        }
+      }
     } catch {
       setError('加载房间信息失败')
     } finally {
       setLoading(false)
+    }
+  }
+
+  const handleStartGame = async () => {
+    if (!roomId || !userId) return
+    try {
+      const room = await startGame(roomId, userId)
+      setRoom(room)
+      setPlayers(room.players)
+      setPhase(room.current_phase)
+      // Show role modal for host if host also has a character
+      const me = room.players.find((p: any) => p.user_id === userId)
+      if (me && !me.is_ready && me.character_id) {
+        setRoleLoading(true)
+        setShowRoleModal(true)
+        try {
+          const roleInfo = await getMyRole(roomId, userId)
+          setMyRole(roleInfo)
+        } catch {
+          setMyRole(null)
+        } finally {
+          setRoleLoading(false)
+        }
+      }
+    } catch (e: any) {
+      setError(e?.response?.data?.detail || '开始游戏失败')
+    }
+  }
+
+  const handleRoleConfirm = async () => {
+    if (!roomId || !userId) return
+    try {
+      const room = await toggleReady(roomId, userId)
+      setRoom(room)
+      setPlayers(room.players)
+      setShowRoleModal(false)
+    } catch {
+      setError('确认失败')
     }
   }
 
@@ -106,6 +165,7 @@ export default function RoomPage() {
 
   const phaseLabels: Record<string, string> = {
     waiting: '等待中',
+    role_reveal: '角色揭晓',
     opening: '开场',
     search_1: '第一轮搜证',
     discuss_1: '第一轮讨论',
@@ -203,20 +263,41 @@ export default function RoomPage() {
       {/* 主持人控制栏 */}
       {isHost && (
         <div className="shrink-0 bg-white/80 border-b border-wood/10 px-4 py-2">
-          <div className="max-w-xl mx-auto flex gap-2 flex-wrap">
-            {Object.entries(phaseLabels).map(([key, label]) => (
+          <div className="max-w-xl mx-auto flex gap-2 flex-wrap items-center">
+            {currentPhase === 'waiting' ? (
               <button
-                key={key}
-                onClick={() => handlePhaseChange(key)}
-                className={`px-2.5 py-1 rounded-lg text-[11px] transition-all ${
-                  currentPhase === key
-                    ? 'bg-wood text-white'
-                    : 'bg-stone-100 text-gray-600 hover:bg-stone-200'
-                }`}
+                onClick={handleStartGame}
+                className="px-3 py-1.5 rounded-lg text-[11px] bg-wood text-white hover:bg-wood/90 transition-all"
               >
-                {label}
+                开始游戏（分配角色）
               </button>
-            ))}
+            ) : currentPhase === 'role_reveal' ? (
+              <>
+                <span className="text-[11px] text-gray-500">角色揭晓中...</span>
+                {players.every((p) => p.is_ready || p.is_host) && (
+                  <button
+                    onClick={() => handlePhaseChange('opening')}
+                    className="px-3 py-1.5 rounded-lg text-[11px] bg-jade text-white hover:bg-jade/90 transition-all"
+                  >
+                    所有人都已就绪，进入开场
+                  </button>
+                )}
+              </>
+            ) : (
+              Object.entries(phaseLabels).map(([key, label]) => (
+                <button
+                  key={key}
+                  onClick={() => handlePhaseChange(key)}
+                  className={`px-2.5 py-1 rounded-lg text-[11px] transition-all ${
+                    currentPhase === key
+                      ? 'bg-wood text-white'
+                      : 'bg-stone-100 text-gray-600 hover:bg-stone-200'
+                  }`}
+                >
+                  {label}
+                </button>
+              ))
+            )}
             <button
               onClick={() => setShowClues((s) => !s)}
               className="px-2.5 py-1 rounded-lg text-[11px] bg-stone-100 text-gray-600 hover:bg-stone-200 transition-all ml-auto"
@@ -285,7 +366,23 @@ export default function RoomPage() {
           >
             <div className={`max-w-[80%] flex flex-col ${msg.sender_id === userId ? 'items-end' : 'items-start'}`}>
               {msg.sender_id !== userId && msg.sender_id !== 'system' && (
-                <span className="text-[10px] text-gray-400 mb-0.5 ml-1">{msg.sender_nickname}</span>
+                <div className="flex items-center gap-1.5 mb-1 ml-1">
+                  {msg.sender_avatar_url ? (
+                    <img
+                      src={msg.sender_avatar_url}
+                      alt=""
+                      className="w-5 h-5 rounded-full object-cover border border-stone-200"
+                      onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
+                    />
+                  ) : (
+                    <div className="w-5 h-5 rounded-full bg-stone-200 flex items-center justify-center text-[10px] text-wood font-serif border border-stone-200">
+                      {(msg.sender_character_name?.[0] || msg.sender_nickname[0])}
+                    </div>
+                  )}
+                  <span className="text-[10px] text-gray-400">
+                    {msg.sender_character_name || msg.sender_nickname}
+                  </span>
+                </div>
               )}
               <div
                 className={`px-3.5 py-2 rounded-2xl text-sm leading-relaxed shadow-sm ${
@@ -344,14 +441,22 @@ export default function RoomPage() {
         </button>
       )}
 
-      {/* AI 侧边面板 */}
+      {/* AI 浮动小框 */}
       {showAI && myCharacterId && (
-        <AISidePanel
+        <AIFloatingChat
           characterId={myCharacterId}
           characterName={myCharacter || '角色'}
           onClose={() => setShowAI(false)}
         />
       )}
+
+      {/* 角色揭晓弹窗 */}
+      <RoleRevealModal
+        open={showRoleModal}
+        role={myRole}
+        loading={roleLoading}
+        onConfirm={handleRoleConfirm}
+      />
     </div>
   )
 }

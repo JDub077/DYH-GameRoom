@@ -79,6 +79,16 @@ export function useRoomAPI() {
     return res
   }, [])
 
+  const startGame = useCallback(async (roomId: string, userId: string): Promise<Room> => {
+    const res: any = await client.post(`/rooms/${roomId}/start-game?user_id=${userId}`)
+    return res
+  }, [])
+
+  const getMyRole = useCallback(async (roomId: string, userId: string): Promise<any> => {
+    const res: any = await client.get(`/rooms/${roomId}/my-role?user_id=${userId}`)
+    return res
+  }, [])
+
   return {
     createRoom,
     listRooms,
@@ -92,5 +102,7 @@ export function useRoomAPI() {
     assignRole,
     getMessages,
     toggleReady,
+    startGame,
+    getMyRole,
   }
 }
